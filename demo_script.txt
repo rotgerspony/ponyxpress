@@ -1,0 +1,32 @@
+
+🎬 PonyXpress Demo Script
+
+[Scene 1: App Login]
+- User logs in as 'carrier@example.com'
+- Home screen shows: Scan Package, View Route, Logout
+
+[Scene 2: Map Trace]
+- Map appears centered on rural route
+- User taps 'Add Mailbox'
+- GPS pin drops; labeled "Herbert St Mailbox"
+
+[Scene 3: Scan Package]
+- Barcode input field + photo upload
+- Select 'Too Small' → destination auto-fills to mailbox
+- Photo taken and submitted
+
+[Scene 4: Admin Panel]
+- Admin logs in
+- Views: Routes by carrier, Stop heatmaps, Export CSV
+
+[Scene 5: Offline Use]
+- Simulate offline barcode queue
+- Reconnect and auto-sync logs
+
+[Scene 6: APK + Desktop + Web]
+- Show Android APK launcher
+- Show EXE splash opening app
+- Show PWA install banner
+
+[Scene 7: Outro]
+- Logo + tagline: "PonyXpress — Deliver Anywhere."

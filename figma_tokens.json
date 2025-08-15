@@ -1,0 +1,17 @@
+
+{
+  "colors": {
+    "primary": "#4caf50",
+    "background": "#ffffff",
+    "text": "#222222"
+  },
+  "typography": {
+    "fontFamily": "Segoe UI",
+    "headingSize": "32px",
+    "bodySize": "16px"
+  },
+  "spacings": {
+    "padding": "16px",
+    "margin": "16px"
+  }
+}

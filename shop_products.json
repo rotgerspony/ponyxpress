@@ -1,0 +1,7 @@
+
+[
+  {"id": 1, "name": "Barcode Scanner (USB)", "price": 39.99, "description": "Plug and play"},
+  {"id": 2, "name": "Rugged GPS Tracker", "price": 79.99, "description": "Battery-powered with offline storage"},
+  {"id": 3, "name": "Solar Power Bank", "price": 24.99, "description": "For mobile carriers"},
+  {"id": 4, "name": "Weatherproof Mailbox Marker", "price": 9.99, "description": "QR-compatible tags"}
+]

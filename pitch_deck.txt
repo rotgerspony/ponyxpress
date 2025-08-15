@@ -1,0 +1,44 @@
+
+PonyXpress — The Offline-First Rural Delivery Platform
+
+Slide 1: Problem
+- 20% of US delivery areas lack reliable routing + tracking tools
+- Existing systems require cellular/data 24/7
+
+Slide 2: Solution
+- Offline-first barcode + mapping
+- Local GPS tracking with cloud sync fallback
+
+Slide 3: Product
+- Web app, PWA, APK, and Desktop EXE
+- Real-time route tracing
+- Admin dashboard, AI chatbot, photo scan
+
+Slide 4: Market
+- USPS subcontractors
+- Rural courier startups
+- NGOs + disaster response
+
+Slide 5: Business Model
+- SaaS: $10/user/month
+- Optional hardware bundle (scanner, GPS dongle)
+- White-label licensing
+
+Slide 6: Competitive Advantage
+- Built for offline
+- GPX/KML/CSV/PDF exports
+- Full AI + WebSocket + cloud + SMS stack
+
+Slide 7: Traction
+- MVP complete
+- GitHub CI/CD ready
+- Multi-platform launch available
+
+Slide 8: Ask
+- Seeking $150K for:
+  • Android/iOS rollout
+  • B2B rural pilot
+  • Drive partnerships
+
+Slide 9: Thank You
+- Contact: joshua@ponyxpress.app

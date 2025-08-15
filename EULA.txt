@@ -1,0 +1,8 @@
+
+END USER LICENSE AGREEMENT (EULA)
+
+This EULA is a legal agreement between you and PonyXpress.
+
+By using this software, you agree to the terms in this agreement. You may not reverse engineer, distribute, or resell this software without permission.
+
+Copyright (c) PonyXpress.
