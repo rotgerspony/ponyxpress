@@ -43,3 +43,8 @@ static/uploads/
 .screenshots/
 
 .screenshots/
+.screenshots/
+.venv/
+__pycache__/
+*.pyc
+.env
