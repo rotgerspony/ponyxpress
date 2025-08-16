@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>Login</h2>
+  <form action="/login" method="post">
+    <label>Username
+      <input name="username" placeholder="alice | bob | admin" required />
+    </label>
+    <label>Password
+      <input name="password" type="password" placeholder="password" required />
+    </label>
+    <button type="submit">Login</button>
+  </form>
+  <p>Demo users: <code>alice</code> (carrier), <code>bob</code> (substitute), <code>admin</code> (admin). Password for all: <code>password</code>.</p>
+{% endblock %}

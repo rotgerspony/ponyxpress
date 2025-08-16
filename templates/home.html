@@ -1,0 +1,28 @@
+﻿{% extends "base.html" %}{% block content %}
+<h1 style="margin-top:.2rem;">PonyXpress</h1>
+<p style="opacity:.85;">Lightweight field routing + scanning. Use the Map to drop stops, the Scanner to capture parcels, and Admin to manage data.</p>
+<div style="display:flex; gap:.6rem; flex-wrap:wrap; margin:.75rem 0 1.25rem;">
+  <a href="/map"><button>🗺️ Open Map</button></a>
+  <a href="/scan"><button>📷 Open Scanner</button></a>
+  <a href="/admin"><button>🛠️ Admin</button></a>
+  <a href="/docs"><button>📚 Docs</button></a>
+</div>
+<div style="display:grid; grid-template-columns: repeat(3, minmax(220px,1fr)); gap:1rem;">
+  <div style="border:1px solid #eee; border-radius:10px; padding:.75rem;">
+    <h3 style="margin:.25rem 0;">Quick Start</h3>
+    <ol style="margin:.25rem 0 .25rem 1rem;">
+      <li>Login: <code>alice</code> or <code>admin</code> (password: <code>password</code>).</li>
+      <li>On <strong>Map</strong>, click “Locate Me”, drop pins, <em>Save</em>.</li>
+      <li>On <strong>Scanner</strong>, scan and <em>Save</em>; optional auto-create mailbox stops.</li>
+    </ol>
+  </div>
+  <div style="border:1px solid #eee; border-radius:10px; padding:.75rem;">
+    <h3 style="margin:.25rem 0;">Roles</h3>
+    <p><strong>carrier</strong>: save stops & scans · <strong>substitute</strong>: view only · <strong>admin</strong>: full control.</p>
+  </div>
+  <div style="border:1px solid #eee; border-radius:10px; padding:.75rem;">
+    <h3 style="margin:.25rem 0;">Links</h3>
+    <p><a href="/about">About</a> · <a href="/help">Help</a> · <a href="/changelog">Changelog</a></p>
+  </div>
+</div>
+{% endblock %}

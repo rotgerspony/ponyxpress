@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Map</h2>
+<p>
+  Token loaded: <code>{{ 'yes' if MAPBOX_TOKEN else 'NO TOKEN SET' }}</code>
+</p>
+<div id="map" style="width: 100%; height: 70vh; border-radius: 12px;"></div>
+
+<div style="margin-top: 1rem;">
+  <button id="locateBtn">📍 Locate Me</button>
+  <button id="clearBtn">🗑️ Clear Pins</button>
+  <span id="status" style="margin-left: 1rem; opacity: 0.8;"></span>
+</div>
+
+<script>
+  // Mapbox GL JS v3 CDN
+  // If the CDN is blocked, you can self-host later.
+</script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.5.1/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.5.1/mapbox-gl.js"></script>
+
+<script>
+  // Pull token & default center from Flask
+  const MAPBOX_TOKEN = "{{ MAPBOX_TOKEN }}";
+  const DEFAULT_CENTER = {{ center|tojson }};
+
+  if (!MAPBOX_TOKEN) {
+    document.getElementById('status').textContent = "⚠️ MAPBOX_TOKEN is missing. Add it to your .env.";
+  }
+
+  mapboxgl.accessToken = MAPBOX_TOKEN;
+  const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/streets-v12',
+    center: [DEFAULT_CENTER.lng, DEFAULT_CENTER.lat],
+    zoom: DEFAULT_CENTER.zoom
+  });
+
+  // Controls
+  map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+  map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+  map.addControl(new mapboxgl.ScaleControl());
+
+  // Store markers so we can clear them later
+  const markers = [];
+
+  function addMarker(lng, lat, label = "Stop") {
+    const el = document.createElement('div');
+    el.style.width = '14px';
+    el.style.height = '14px';
+    el.style.borderRadius = '50%';
+    el.style.background = '#1e90ff';
+    el.style.boxShadow = '0 0 0 3px rgba(30,144,255,0.25)';
+
+    const m = new mapboxgl.Marker({ element: el, draggable: false })
+      .setLngLat([lng, lat])
+      .setPopup(new mapboxgl.Popup({ offset: 12 }).setHTML(
+        `<strong>${label}</strong><br>Lng: ${lng.toFixed(5)}<br>Lat: ${lat.toFixed(5)}`
+      ))
+      .addTo(map);
+    markers.push(m);
+    return m;
+  }
+
+  // Click to drop a pin
+  map.on('click', (e) => {
+    addMarker(e.lngLat.lng, e.lngLat.lat, "Clicked Stop");
+  });
+
+  // Locate Me button
+  document.getElementById('locateBtn').addEventListener('click', () => {
+    if (!navigator.geolocation) {
+      document.getElementById('status').textContent = "Geolocation not supported in this browser.";
+      return;
+    }
+    document.getElementById('status').textContent = "Locating…";
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const { latitude, longitude } = pos.coords;
+      document.getElementById('status').textContent = `You are at ${longitude.toFixed(5)}, ${latitude.toFixed(5)}`;
+      map.flyTo({ center: [longitude, latitude], zoom: 17, essential: true });
+      addMarker(longitude, latitude, "My Location");
+    }, (err) => {
+      document.getElementById('status').textContent = "Location error: " + err.message;
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  });
+
+  // Clear pins
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    while (markers.length) {
+      const m = markers.pop();
+      m.remove();
+    }
+    document.getElementById('status').textContent = "Cleared all pins.";
+  });
+</script>
+{% endblock %}

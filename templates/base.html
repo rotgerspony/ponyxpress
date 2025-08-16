@@ -1,0 +1,47 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PonyXpress</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: ui-sans-serif, system-ui, Arial; margin: 2rem; }
+    nav a { margin-right: 1rem; }
+    .flash { padding: .5rem .75rem; border-radius: 6px; margin:.5rem 0; }
+    .success { background:#e6ffed; }
+    .error { background:#ffe6e6; }
+    .info { background:#eef2ff; }
+    form { display:flex; flex-direction:column; gap:.5rem; max-width:320px; }
+    input, button { padding:.5rem; }
+  </style>
+<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" />`n</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/map">Map</a>
+    <a href="/scan">Scan</a>
+    <a href="/carrier">Carrier</a>
+    <a href="/substitute">Substitute</a>
+    <a href="/admin">Admin</a>
+  </nav>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for cat, msg in messages %}
+        <div class="flash {{cat}}">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+  <footer style="margin-top:2rem; padding-top:1rem; border-top:1px solid #eee; display:flex; gap:1rem; flex-wrap:wrap; opacity:.9;">
+    <a href="/about">About</a>
+    <a href="/help">Help</a>
+    <a href="/docs">Docs</a>
+    <a href="/contact">Contact</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/terms">Terms</a>
+    <a href="/changelog">Changelog</a>
+  </footer>
+</body>
+</html>
+
+

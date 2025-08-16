@@ -1,0 +1,41 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.build/
+dist/
+
+# Virtual env
+.venv/
+env/
+venv/
+
+# Flask / data
+instance/
+*.db
+*.sqlite3
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+
+# Playwright / reports
+playwright-report/
+test-results/
+
+# App artifacts
+.screenshots_all/
+static/uploads/

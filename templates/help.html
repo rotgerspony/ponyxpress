@@ -1,0 +1,15 @@
+﻿{% extends "base.html" %}{% block content %}
+<h2>Help</h2>
+<h3>Common tasks</h3>
+<ul>
+  <li><strong>Save a stop:</strong> Map → drop pin → “Save Last Pin”.</li>
+  <li><strong>Delete stops (admin):</strong> Map popup “Delete” or Admin → Stops.</li>
+  <li><strong>Scan a parcel:</strong> Scanner → Start → point camera → Save (or enable Auto-save).</li>
+</ul>
+<h3>Troubleshooting</h3>
+<ul>
+  <li>Map not loading? Check <code>MAPBOX_TOKEN</code> in <code>.env</code>.</li>
+  <li>Camera blocked? Allow browser camera permission and pick a device.</li>
+  <li>Can’t save? Log in as <code>alice</code> (carrier) or <code>admin</code>.</li>
+</ul>
+{% endblock %}

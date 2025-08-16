@@ -1,0 +1,168 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<h2>Admin · Stops</h2>
+
+<div style="display:grid; gap:.75rem; align-items:end; grid-template-columns: repeat(6, minmax(120px, 1fr));">
+  <label>Label<br><input id="fLabel" placeholder="e.g. mailbox"></label>
+  <label>Created By<br><input id="fBy" placeholder="username"></label>
+  <label>Date From<br><input id="fFrom" type="date"></label>
+  <label>Date To<br><input id="fTo" type="date"></label>
+  <label>Page Size<br>
+    <select id="fSize">
+      <option>10</option><option selected>25</option><option>50</option><option>100</option><option>200</option>
+    </select>
+  </label>
+  <div>
+    <button id="applyBtn">Apply</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+</div>
+
+<div style="display:flex; gap:.5rem; margin:.75rem 0;">
+  <button id="prevBtn">« Prev</button>
+  <div id="meta" style="align-self:center; opacity:.8;">Page 1</div>
+  <button id="nextBtn">Next »</button>
+  <div style="flex:1"></div>
+  <button id="exportAllBtn" title="CSV download">⬇️ Export All CSV</button> <button id="dbExportBtn" title="Download DB">💾 DB Export</button> <button id="dbBackupBtn" title="Backup DB \(timestamped\)">🗂️ Backup</button> <label style="margin-left:\.5rem;">Restore DB   <input type="file" id="dbFile" style="width:220px;"> </label> <button id="dbImportBtn">Restore</button>
+  <button id="bulkDeleteBtn" title="Delete checked">🗑️ Delete Selected</button>
+</div>
+
+<table border="1" cellpadding="6" cellspacing="0" style="width:100%; border-collapse:collapse;">
+  <thead>
+    <tr style="background:#f5f5f5;">
+      <th><input type="checkbox" id="checkAll"></th>
+      <th>ID</th><th>Label</th><th>Lng</th><th>Lat</th><th>By</th><th>Created</th><th>Actions</th>
+    </tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<script>
+  const rowsEl = document.getElementById('rows');
+  const fLabel = document.getElementById('fLabel');
+  const fBy = document.getElementById('fBy');
+  const fFrom = document.getElementById('fFrom');
+  const fTo = document.getElementById('fTo');
+  const fSize = document.getElementById('fSize');
+  const metaEl = document.getElementById('meta');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const applyBtn = document.getElementById('applyBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const exportAllBtn = document.getElementById('exportAllBtn');
+  const checkAll = document.getElementById('checkAll');
+  const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+
+  let page = 1;
+  let pageSize = parseInt(fSize.value, 10);
+  let rows = [];
+  let selected = new Set();
+
+  function qs() {
+    const p = new URLSearchParams();
+    if (fLabel.value.trim()) p.set('label', fLabel.value.trim());
+    if (fBy.value.trim()) p.set('created_by', fBy.value.trim());
+    if (fFrom.value) p.set('date_from', fFrom.value);
+    if (fTo.value) p.set('date_to', fTo.value);
+    p.set('page', page);
+    p.set('page_size', pageSize);
+    return p.toString();
+  }
+
+  async function load() {
+    const r = await fetch('/api/stops?' + qs());
+    const data = await r.json();
+    rows = data.items || [];
+    renderRows(rows);
+    const m = data.meta || {};
+    metaEl.textContent = `Page ${m.page || 1} of ${m.total_pages || 1} — ${m.total || 0} total`;
+    prevBtn.disabled = !m.has_prev;
+    nextBtn.disabled = !m.has_next;
+  }
+
+  function renderRows(items) {
+    rowsEl.innerHTML = '';
+    selected.clear();
+    checkAll.checked = false;
+    for (const s of items) {
+      const tr = document.createElement('tr');
+
+      const tdCk = document.createElement('td');
+      const ck = document.createElement('input');
+      ck.type = 'checkbox';
+      ck.addEventListener('change', () => { if (ck.checked) selected.add(s.id); else selected.delete(s.id); });
+      tdCk.appendChild(ck); tr.appendChild(tdCk);
+
+      tr.innerHTML += `
+        <td>${s.id}</td>
+        <td>${escapeHtml(s.label || '')}</td>
+        <td>${s.lng.toFixed(5)}</td>
+        <td>${s.lat.toFixed(5)}</td>
+        <td>${escapeHtml(s.created_by || '')}</td>
+        <td><small>${new Date(s.created_at).toLocaleString()}</small></td>
+        <td>
+          <a href="/api/stops/${s.id}/export" title="CSV">CSV</a>
+          &nbsp;|&nbsp;
+          <a href="/map?center=${s.lng},${s.lat}&id=${s.id}&zoom=18" title="Map">Map</a>
+        </td>
+      `;
+      rowsEl.appendChild(tr);
+    }
+  }
+
+  function escapeHtml(s) {
+    return (s+'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  fSize.addEventListener('change', () => { pageSize = parseInt(fSize.value, 10); page = 1; load(); });
+  applyBtn.addEventListener('click', () => { page = 1; load(); });
+  resetBtn.addEventListener('click', () => { fLabel.value=''; fBy.value=''; fFrom.value=''; fTo.value=''; page=1; fSize.value='25'; pageSize=25; load(); });
+  prevBtn.addEventListener('click', () => { if (page>1) { page--; load(); } });
+  nextBtn.addEventListener('click', () => { page++; load(); });
+
+  exportAllBtn.addEventListener('click', () => { window.location.href = '/api/stops/export'; });
+
+  checkAll.addEventListener('change', () => {
+    selected.clear();
+    for (const row of rowsEl.querySelectorAll('tr')) {
+      const ck = row.querySelector('input[type=checkbox]');
+      if (ck) ck.checked = checkAll.checked;
+      const id = parseInt(row.children[1].innerText, 10);
+      if (checkAll.checked) selected.add(id);
+    }
+  });
+
+  bulkDeleteBtn.addEventListener('click', async () => {
+    if (!selected.size) { alert('No rows selected'); return; }
+    if (!confirm('Delete ' + selected.size + ' selected?')) return;
+    const ids = Array.from(selected);
+    const r = await fetch('/api/stops/bulk_delete', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ ids })
+    });
+    if (!r.ok) { alert('Bulk delete failed'); return; }
+    await load();
+  });
+
+  load();  // --- DB Tools ---
+  const dbExportBtn = document.getElementById('dbExportBtn');
+  const dbBackupBtn = document.getElementById('dbBackupBtn');
+  const dbImportBtn = document.getElementById('dbImportBtn');
+  const dbFile = document.getElementById('dbFile');
+  if (dbExportBtn) dbExportBtn.addEventListener('click', () => { window.location.href = '/admin/db/export'; });
+  if (dbBackupBtn) dbBackupBtn.addEventListener('click', async () => {
+    const r = await fetch('/admin/db/backup'); const d = await r.json().catch(()=>({}));
+    alert(r.ok ? ('Backed up: ' + (d.backup || 'ok')) : ('Backup failed: ' + (d.error || r.statusText)));
+  });
+  if (dbImportBtn) dbImportBtn.addEventListener('click', async () => {
+    if (!dbFile.files?.length) { alert('Pick a .db/.sqlite file'); return; }
+    if (!confirm('Restore DB from selected file? This will overwrite current DB.')) return;
+    const fd = new FormData(); fd.append('file', dbFile.files[0]);
+    const r = await fetch('/admin/db/import', { method: 'POST', body: fd });
+    const d = await r.json().catch(()=>({}));
+    alert(r.ok ? 'DB restored. Please reload pages.' : ('Restore failed: ' + (d.error || r.statusText)));
+  });
+</script>
+{% endblock %}
+
+

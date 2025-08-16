@@ -1,0 +1,135 @@
+﻿import os
+from flask import Flask, jsonify, render_template, request, send_from_directory
+from simple_pages import bp as simple_pages_bp
+from dotenv import load_dotenv
+from flask_login import login_required
+from auth import auth_bp, init_login_manager, role_required, ensure_default_users
+from models import init_db, db
+from api_stops import api_stops
+from api_scans import api_scans
+from admin_dashboard import admin_bp
+
+load_dotenv()
+app = Flask(__name__)
+
+app.register_blueprint(simple_pages_bp)
+# --- Config ---
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-me")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///ponyxpress.db")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# --- Init ---
+init_login_manager(app)
+init_db(app)
+ensure_default_users(app)
+app.register_blueprint(auth_bp, url_prefix="")
+app.register_blueprint(api_stops)
+app.register_blueprint(api_scans)
+app.register_blueprint(admin_bp)
+
+@app.get("/")
+def home():
+    return render_template("home.html")
+
+@app.get("/healthz")
+def healthz():
+    return jsonify(ok=True), 200
+
+# role-protected sample pages
+@app.get("/carrier")
+@role_required("carrier", "admin")
+def carrier_page():
+    return render_template("role_carrier.html")
+
+@app.get("/substitute")
+@role_required("substitute", "admin")
+def substitute_page():
+    return render_template("role_substitute.html")
+
+@app.get("/admin")
+@role_required("admin")
+def admin_page():
+    return "Admin page (admin only)"
+
+# map
+@app.get("/map")
+def map_page():
+    mapbox_token = os.environ.get("MAPBOX_TOKEN", "")
+    center = {"lng": -94.4899, "lat": 44.7275, "zoom": 15}
+    return render_template("map.html", MAPBOX_TOKEN=mapbox_token, center=center)
+
+# scanner
+@app.get("/scan")
+def scan_page():
+    return render_template("scan.html")
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "50000"))
+    app.run(host="0.0.0.0", port=port, debug=True)
+
+
+
+
+
+
+# removed old route /about
+
+
+# removed old route /help
+
+
+# removed old route /docs
+
+
+# removed old route /contact
+
+
+# removed old route /privacy
+
+
+# removed old route /terms
+
+
+# removed old route /changelog
+
+
+# removed old 404 handler
+
+
+# removed old 500 handler
+
+# BEGIN SIMPLE PAGES (auto-added)
+
+# removed old route /about
+
+
+# removed old route /help
+
+
+# removed old route /docs
+
+
+# removed old route /contact
+
+
+# removed old route /privacy
+
+
+# removed old route /terms
+
+
+# removed old route /changelog
+
+@app.errorhandler(404)
+def not_found(e):
+    return render_template("not_found.html"), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    return render_template("server_error.html"), 500
+# END SIMPLE PAGES
+
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, "static"), "favicon.ico", mimetype="image/vnd.microsoft.icon")
+

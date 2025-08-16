@@ -1,0 +1,117 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<h2>Admin · Users</h2>
+<p style="opacity:.8;">Create users, change roles, reset passwords. Changes are immediate.</p>
+
+<section style="border:1px solid #ddd; border-radius:10px; padding:.75rem; margin-bottom:1rem;">
+  <h3 style="margin-top:0;">Create User</h3>
+  <div style="display:grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap:.5rem; align-items:end;">
+    <label>Username<br><input id="nuName" placeholder="username"></label>
+    <label>Role<br>
+      <select id="nuRole"><option>carrier</option><option>substitute</option><option>admin</option></select>
+    </label>
+    <label>Password<br><input id="nuPass" type="password" placeholder="password"></label>
+    <div><button id="nuCreateBtn">Create</button></div>
+  </div>
+  <div id="nuMsg" style="margin-top:.5rem; opacity:.85;"></div>
+</section>
+
+<table border="1" cellpadding="6" cellspacing="0" style="width:100%; border-collapse:collapse;">
+  <thead>
+    <tr style="background:#f5f5f5;">
+      <th>User</th><th>Role</th><th>Set Role</th><th>Password</th><th>Danger</th>
+    </tr>
+  </thead>
+  <tbody id="urows"></tbody>
+</table>
+
+<script>
+  const rowsEl = document.getElementById('urows');
+  const ROLES = ['carrier','substitute','admin'];
+
+  async function loadUsers() {
+    const r = await fetch('/admin/api/users');
+    const list = await r.json();
+    rowsEl.innerHTML = '';
+    for (const u of list) {
+      const tr = document.createElement('tr');
+
+      // role select
+      const sel = document.createElement('select');
+      for (const role of ROLES) {
+        const o = document.createElement('option');
+        o.value = role; o.textContent = role;
+        if (role === u.role) o.selected = true;
+        sel.appendChild(o);
+      }
+      const saveRole = document.createElement('button');
+      saveRole.textContent = 'Save';
+      saveRole.addEventListener('click', async () => {
+        const role = sel.value;
+        const r2 = await fetch('/admin/api/users/' + encodeURIComponent(u.username) + '/role', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ role })
+        });
+        const data = await r2.json();
+        if (!r2.ok) { alert('Update failed: ' + (data.error || r2.statusText)); return; }
+        alert('Role updated: ' + u.username + ' → ' + role);
+        await loadUsers();
+      });
+
+      // password reset
+      const np = document.createElement('input'); np.type = 'password'; np.placeholder = 'new password';
+      const savePw = document.createElement('button'); savePw.textContent = 'Reset';
+      savePw.addEventListener('click', async () => {
+        const pw = np.value.trim();
+        if (!pw) { alert('Enter a password'); return; }
+        const r2 = await fetch('/admin/api/users/' + encodeURIComponent(u.username) + '/password', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ password: pw })
+        });
+        const data = await r2.json();
+        if (!r2.ok) { alert('Reset failed: ' + (data.error || r2.statusText)); return; }
+        alert('Password reset for ' + u.username);
+        np.value = '';
+      });
+
+      // delete (not yourself)
+      const del = document.createElement('button'); del.textContent = 'Delete';
+      del.style.background = '#ffefef';
+      del.addEventListener('click', async () => {
+        if (!confirm('Delete ' + u.username + '?')) return;
+        const r2 = await fetch('/admin/api/users/' + encodeURIComponent(u.username), { method: 'DELETE' });
+        const data = await r2.json().catch(() => ({}));
+        if (!r2.ok) { alert('Delete failed: ' + (data.error || r2.statusText)); return; }
+        await loadUsers();
+      });
+
+      tr.innerHTML = `<td><strong>${escapeHtml(u.username)}</strong></td><td>${escapeHtml(u.role)}</td>`;
+      const tdRole = document.createElement('td'); tdRole.appendChild(sel); tdRole.appendChild(document.createTextNode(' ')); tdRole.appendChild(saveRole);
+      const tdPw = document.createElement('td'); tdPw.appendChild(np); tdPw.appendChild(document.createTextNode(' ')); tdPw.appendChild(savePw);
+      const tdDel = document.createElement('td'); tdDel.appendChild(del);
+
+      tr.appendChild(tdRole); tr.appendChild(tdPw); tr.appendChild(tdDel);
+      rowsEl.appendChild(tr);
+    }
+  }
+
+  function escapeHtml(s) { return (s+'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // create user form
+  document.getElementById('nuCreateBtn').addEventListener('click', async () => {
+    const name = document.getElementById('nuName').value.trim().toLowerCase();
+    const role = document.getElementById('nuRole').value;
+    const pw = document.getElementById('nuPass').value;
+    const msg = document.getElementById('nuMsg');
+    msg.textContent = 'Creating…';
+    const r = await fetch('/admin/api/users', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ username: name, role, password: pw }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { msg.textContent = 'Error: ' + (data.error || r.statusText); return; }
+    msg.textContent = 'Created ' + name;
+    document.getElementById('nuName').value=''; document.getElementById('nuPass').value='';
+    await loadUsers();
+  });
+
+  loadUsers();
+</script>
+{% endblock %}

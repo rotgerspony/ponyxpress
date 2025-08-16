@@ -1,0 +1,429 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<h2>Map</h2>
+
+<!-- Top controls (role-aware) -->
+<div style="display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-bottom:.5rem;">
+  <button id="locateBtn">📍 Locate Me (start tracking)</button>
+  <button id="mbRightBtn">➕ Mailbox (Right of Travel)</button>
+  <button id="mbLeftBtn">➕ Mailbox (Left of Travel)</button>
+  <button id="mbClickBtn">➕ Mailbox at Click</button>
+  <button id="saveLastBtn">💾 Save Last Pin</button>
+  <button id="loadBtn">🔄 Load Saved Stops</button>
+  <button id="clearBtn">🗑️ Clear Pins</button>
+  <span id="status" style="margin-left:.5rem; opacity:.9;"></span>
+</div>
+
+<p style="margin-top:0;">
+  Token loaded: <code>{{ 'yes' if MAPBOX_TOKEN else 'NO TOKEN SET' }}</code> |
+  {% if current_user.is_authenticated %}
+    You are: <strong>{{ current_user.username }}</strong> (role: <strong>{{ current_user.role }}</strong>)
+  {% else %}
+    <em>Not logged in (view-only)</em>
+  {% endif %}
+</p>
+
+<!-- Layout: map + sidebar -->
+<div style="display:grid; grid-template-columns: 1fr 380px; gap: 1rem; align-items:start;">
+  <div id="map" style="width: 100%; height: 70vh; border-radius: 12px;"></div>
+
+  <aside style="border:1px solid #ddd; border-radius:12px; padding:.75rem; max-height:70vh; overflow:auto;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:.5rem;">
+      <h3 style="margin:0;">Saved Stops</h3>
+      <div id="adminBulkBar" style="display:none; gap:.25rem;">
+        <button id="selectAllBtn" title="Admin only">Select All</button>
+        <button id="clearSelBtn" title="Admin only">Clear Selection</button>
+        <button id="deleteSelBtn" title="Admin only">🗑️ Delete Selected</button>
+        <button id="exportBtn" title="Admin only">⬇️ Export CSV</button>
+      </div>
+    </div>
+
+    <!-- Directions Preview -->
+    <section style="margin:.5rem 0 .75rem; border:1px solid #eee; border-radius:10px; padding:.5rem;">
+      <h4 style="margin:.25rem 0;">Directions Preview</h4>
+      <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:.4rem; align-items:end;">
+        <label>Start<br><select id="routeStart"></select></label>
+        <label>End<br><select id="routeEnd"></select></label>
+        <div>
+          <button id="routeBtn" title="Draw route">Route</button>
+          <button id="clearRouteBtn" title="Clear route">Clear</button>
+        </div>
+      </div>
+      <div id="routeInfo" style="opacity:.85; margin-top:.4rem;"></div>
+    </section>
+
+    <div id="stopsList" style="display:flex; flex-direction:column; gap:.5rem; margin-top:.5rem;"></div>
+    <p style="opacity:.75; margin-top:.75rem;">
+      {% if current_user.is_authenticated and current_user.role in ['carrier', 'admin'] %}
+        You can <strong>Save</strong> pins.
+        {% if current_user.role == 'admin' %} You can also <strong>bulk delete</strong> and <strong>export CSV</strong>.{% endif %}
+      {% else %}
+        View-only. Login as <code>alice</code> (carrier) or <code>admin</code> to edit.
+      {% endif %}
+    </p>
+  </aside>
+</div>
+
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.5.1/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.5.1/mapbox-gl.js"></script>
+
+<script>
+  // ---- Role flags from server ----
+  const IS_AUTH  = {{ 'true' if current_user.is_authenticated else 'false' }};
+  const USER_ROLE = "{{ current_user.role if current_user.is_authenticated else '' }}";
+  const CAN_SAVE = {{ 'true' if current_user.is_authenticated and current_user.role in ['carrier','admin'] else 'false' }};
+  const IS_ADMIN = {{ 'true' if current_user.is_authenticated and current_user.role == 'admin' else 'false' }};
+
+  const MAPBOX_TOKEN = "{{ MAPBOX_TOKEN }}";
+  const DEFAULT_CENTER = {{ center|tojson }};
+  const statusEl = document.getElementById('status');
+
+  // --- URL deep-link params (center/id/zoom) ---
+  function getParams() {
+    const p = new URLSearchParams(window.location.search);
+    const centerStr = p.get('center');
+    const zoomStr = p.get('zoom');
+    const idStr = p.get('id');
+    let focused = { center: null, zoom: null, id: null };
+    if (centerStr) {
+      const parts = centerStr.split(',').map(Number);
+      if (parts.length === 2 && parts.every(n => !Number.isNaN(n))) focused.center = { lng: parts[0], lat: parts[1] };
+    }
+    if (zoomStr && !Number.isNaN(Number(zoomStr))) focused.zoom = Number(zoomStr);
+    if (idStr && !Number.isNaN(Number(idStr))) focused.id = Number(idStr);
+    return focused;
+  }
+  const FOCUS = getParams();
+
+  mapboxgl.accessToken = MAPBOX_TOKEN || "";
+  const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/streets-v12',
+    center: FOCUS.center ? [FOCUS.center.lng, FOCUS.center.lat] : [DEFAULT_CENTER.lng, DEFAULT_CENTER.lat],
+    zoom:   FOCUS.zoom   ?? DEFAULT_CENTER.zoom
+  });
+
+  map.on('load', async () => {
+    statusEl.textContent = '🟢 Map loaded';
+    await loadSavedStops();
+    applyRoleVisibility();
+
+    if (FOCUS.id !== null) {
+      const m = markerById.get(FOCUS.id);
+      if (m) {
+        map.flyTo({ center: m.getLngLat(), zoom: Math.max(map.getZoom(), FOCUS.zoom ?? 17), essential: true });
+        m.togglePopup();
+        setMarkerSelected(m, true);
+      }
+    }
+  });
+  map.on('error', e => { console.error('Map error:', e); statusEl.textContent = '🔴 Map error'; });
+
+  map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+  map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+  map.addControl(new mapboxgl.ScaleControl());
+
+  function applyRoleVisibility() {
+    document.getElementById('saveLastBtn').style.display = CAN_SAVE ? '' : 'none';
+    document.getElementById('adminBulkBar').style.display = IS_ADMIN ? 'flex' : 'none';
+  }
+
+  // ---- Marker/selection helpers ----
+  const markers = [];
+  const markerById = new Map();
+  const rowById = new Map();
+  const selectedIds = new Set();
+  let lastPin = null;
+
+  function makeMarkerEl(selected=false) {
+    const el = document.createElement('div');
+    el.style.width = '14px';
+    el.style.height = '14px';
+    el.style.borderRadius = '50%';
+    el.style.background = selected ? '#ff4757' : '#1e90ff';
+    el.style.boxShadow = selected ? '0 0 0 3px rgba(255,71,87,0.25)' : '0 0 0 3px rgba(30,144,255,0.25)';
+    return el;
+  }
+  function setMarkerSelected(marker, isSelected) {
+    const el = makeMarkerEl(isSelected);
+    if (marker.setElement) marker.setElement(el);
+  }
+
+  function addMarker(lng, lat, label = "Stop", id=null) {
+    const adminDelete = (IS_ADMIN && id !== null)
+      ? `<br><button class="js-delete-stop" data-id="${id}">Delete</button>`
+      : '';
+    const m = new mapboxgl.Marker({ element: makeMarkerEl(false) })
+      .setLngLat([lng, lat])
+      .setPopup(new mapboxgl.Popup({ offset: 12 }).setHTML(
+        `<strong>${label}</strong><br>Lng: ${lng.toFixed(5)}<br>Lat: ${lat.toFixed(5)}${id ? '<br>ID: '+id : ''}${adminDelete}`
+      ))
+      .addTo(map);
+    markers.push(m);
+    lastPin = { lng, lat, label };
+    if (id !== null) {
+      markerById.set(id, m);
+      if (IS_ADMIN) m.getElement().addEventListener('click', (e) => { toggleSelected(id); e.stopPropagation(); });
+    }
+    return m;
+  }
+
+  function clearMarkers() { while (markers.length) markers.pop().remove(); markerById.clear(); }
+  function toggleSelected(id, explicit=null) {
+    const shouldSelect = (explicit === null) ? !selectedIds.has(id) : explicit;
+    if (shouldSelect) selectedIds.add(id); else selectedIds.delete(id);
+    const marker = markerById.get(id);
+    if (marker) setMarkerSelected(marker, shouldSelect);
+  }
+
+  // click memory for "Mailbox at Click"
+  let lastClickLngLat = null;
+  map.on('click', (e) => { lastClickLngLat = e.lngLat; addMarker(e.lngLat.lng, e.lngLat.lat, "Clicked Stop"); });
+
+  // ---- Live tracking / heading
+  let watchId = null, lastFix = null, prevFixRaw = null;
+  const RIGHT_OFFSET_METERS = 2.5, LEFT_OFFSET_METERS = 2.5;
+  const toRad = d => d*Math.PI/180, toDeg = r => r*180/Math.PI;
+  const metersToDegLat = m => m/111320;
+  const metersToDegLng = (m, lat) => m/(111320*Math.cos(toRad(lat)));
+  function computeHeadingRad(curr, prev) {
+    if (typeof curr.heading === 'number' && !Number.isNaN(curr.heading)) return toRad(curr.heading);
+    if (prev) {
+      const dLng = (curr.lng - prev.lng) * Math.cos(toRad((curr.lat + prev.lat)/2));
+      const dLat = (curr.lat - prev.lat);
+      const theta = Math.atan2(dLng, dLat);
+      if (!Number.isNaN(theta)) return theta;
+    }
+    return toRad(map.getBearing() || 0);
+  }
+  function offsetByHeading(lng, lat, headingRad, metersRight=0, metersForward=0) {
+    const fx = Math.sin(headingRad), fy = Math.cos(headingRad);
+    const rx = Math.cos(headingRad), ry = -Math.sin(headingRad);
+    const eastMeters  = fx * metersForward + rx * metersRight;
+    const northMeters = fy * metersForward + ry * metersRight;
+    const dLat = metersToDegLat(northMeters);
+    const dLng = metersToDegLng(eastMeters, lat);
+    return { lng: lng + dLng, lat: lat + dLat };
+  }
+  function startWatch() {
+    if (!navigator.geolocation) { statusEl.textContent = "Geolocation not supported"; return; }
+    if (watchId !== null) return;
+    watchId = navigator.geolocation.watchPosition((pos) => {
+      const { latitude, longitude, heading } = pos.coords;
+      const t = pos.timestamp;
+      const curr = { lat: latitude, lng: longitude, heading };
+      const prev = prevFixRaw ? { lat: prevFixRaw.lat, lng: prevFixRaw.lng } : null;
+      const headingRad = computeHeadingRad(curr, prev);
+      lastFix = { lat: curr.lat, lng: curr.lng, headingRad };
+      prevFixRaw = { lat: curr.lat, lng: curr.lng, t };
+      statusEl.textContent = `Tracking — ${curr.lng.toFixed(5)}, ${curr.lat.toFixed(5)}; heading ${toDeg(headingRad).toFixed(0)}°`;
+      map.flyTo({ center: [curr.lng, curr.lat], zoom: Math.max(map.getZoom(), 16), essential: true });
+      addMarker(curr.lng, curr.lat, "My Location");
+    }, (err) => { statusEl.textContent = "Location error: " + err.message; },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+  }
+
+  // ---- Sidebar & API ----
+  const stopsListEl = document.getElementById('stopsList');
+  const routeStartEl = document.getElementById('routeStart');
+  const routeEndEl = document.getElementById('routeEnd');
+  const routeBtn = document.getElementById('routeBtn');
+  const clearRouteBtn = document.getElementById('clearRouteBtn');
+  const routeInfo = document.getElementById('routeInfo');
+
+  let lastStopsList = [];
+
+  function renderStopsList(items) {
+    lastStopsList = items.slice();
+    stopsListEl.innerHTML = '';
+    rowById.clear();
+    selectedIds.clear();
+
+    // fill route dropdowns
+    const opts = items.map(s => ({value: s.id, label: `${s.label || 'Stop'} #${s.id} (${s.lng.toFixed(4)}, ${s.lat.toFixed(4)})`}));
+    const fill = (sel) => { sel.innerHTML = '<option value="">Select…</option>'; for (const o of opts) { const el = document.createElement('option'); el.value = o.value; el.textContent = o.label; sel.appendChild(el); } };
+    fill(routeStartEl); fill(routeEndEl);
+
+    if (!items.length) {
+      stopsListEl.innerHTML = '<div style="opacity:.7;">No saved stops yet.</div>';
+      return;
+    }
+    for (const s of items) {
+      const row = document.createElement('div');
+      row.dataset.id = s.id;
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = IS_ADMIN ? 'auto 1fr' : '1fr';
+      row.style.alignItems = 'center';
+      row.style.gap = '.5rem';
+      row.style.border = '1px solid #eee';
+      row.style.borderRadius = '8px';
+      row.style.padding = '.5rem .6rem';
+
+      if (IS_ADMIN) {
+        const cb = document.createElement('input'); cb.type = 'checkbox';
+        cb.addEventListener('change', () => toggleSelected(s.id, cb.checked));
+        row.appendChild(cb);
+      }
+
+      const info = document.createElement('div');
+      info.innerHTML = `<strong>${s.label || 'Stop'} #${s.id}</strong><br><small>${s.lng.toFixed(5)}, ${s.lat.toFixed(5)}${s.created_by ? ' · by '+s.created_by : ''}</small>`;
+      if (IS_ADMIN) { info.style.cursor = 'pointer'; info.title = 'Toggle select'; info.addEventListener('click', () => { const cb = row.querySelector('input[type=checkbox]'); cb.checked = !cb.checked; toggleSelected(s.id, cb.checked); }); }
+      row.appendChild(info);
+
+      stopsListEl.appendChild(row);
+      rowById.set(s.id, row);
+    }
+  }
+
+  async function loadSavedStops() {
+    try {
+      const r = await fetch('/api/stops');
+      const payload = await r.json();
+      const list = payload.items || payload || [];
+      clearMarkers();
+      markerById.clear();
+      for (const s of list) addMarker(s.lng, s.lat, s.label || 'Stop', s.id);
+      renderStopsList(list);
+      if (list.length) statusEl.textContent = `Loaded ${list.length} saved stop(s)`;
+    } catch (e) { console.error(e); statusEl.textContent = 'Load failed'; }
+  }
+
+  async function saveLastPin() {
+    if (!CAN_SAVE) { statusEl.textContent = 'Not allowed — login as carrier/admin'; return; }
+    if (!lastPin) { statusEl.textContent = 'No pin to save (drop one first)'; return; }
+    try {
+      const r = await fetch('/api/stops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lng: lastPin.lng, lat: lastPin.lat, label: lastPin.label }) });
+      if (r.status === 403) { statusEl.textContent = '403 — login as carrier/admin to save'; return; }
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || r.statusText);
+      statusEl.textContent = `Saved stop #${data.id}`;
+      await loadSavedStops();
+    } catch (e) { console.error(e); statusEl.textContent = 'Save failed: ' + e.message; }
+  }
+
+  async function deleteStop(id) {
+    if (!IS_ADMIN) { statusEl.textContent = 'Not allowed — admin only'; return false; }
+    try {
+      const r = await fetch('/api/stops/' + id, { method: 'DELETE' });
+      if (r.status === 403) { statusEl.textContent = '403 — admin only'; return false; }
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || r.statusText);
+      const m = markerById.get(id); if (m) { m.remove(); markerById.delete(id); }
+      statusEl.textContent = `Deleted stop #${id}`;
+      return true;
+    } catch (e) { console.error(e); statusEl.textContent = 'Delete failed: ' + e.message; return false; }
+  }
+
+  async function bulkDeleteSelected() {
+    if (!IS_ADMIN) { statusEl.textContent = 'Not allowed — admin only'; return; }
+    if (!selectedIds.size) { statusEl.textContent = 'No stops selected'; return; }
+    const ids = Array.from(selectedIds);
+    if (!confirm(`Delete ${ids.length} stop(s)?`)) return;
+    try {
+      const r = await fetch('/api/stops/bulk_delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+      if (r.status === 403) { statusEl.textContent = '403 — admin only'; return; }
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || r.statusText);
+      ids.forEach(id => { const m = markerById.get(id); if (m) m.remove(); markerById.delete(id); });
+      await loadSavedStops();
+      statusEl.textContent = `Deleted ${data.deleted_count}/${data.requested} selected`;
+    } catch (e) { console.error(e); statusEl.textContent = 'Bulk delete failed: ' + e.message; }
+  }
+
+  function exportCSV() {
+    if (!IS_ADMIN) { statusEl.textContent = 'Not allowed — admin only'; return; }
+    window.location.href = '/api/stops/export';
+  }
+
+  // --- Directions Preview ---
+  let routeSourceId = "route-line-src";
+  let routeLayerId = "route-line-lyr";
+
+  function clearRoute() {
+    routeInfo.textContent = '';
+    if (map.getLayer(routeLayerId)) map.removeLayer(routeLayerId);
+    if (map.getSource(routeSourceId)) map.removeSource(routeSourceId);
+  }
+
+  async function drawRoute() {
+    const sid = Number(routeStartEl.value || NaN);
+    const eid = Number(routeEndEl.value || NaN);
+    if (Number.isNaN(sid) || Number.isNaN(eid) || sid === eid) {
+      routeInfo.textContent = 'Pick two different stops.'; return;
+    }
+    const s = lastStopsList.find(x => x.id === sid);
+    const e = lastStopsList.find(x => x.id === eid);
+    if (!s || !e) { routeInfo.textContent = 'Stops not found.'; return; }
+    if (!MAPBOX_TOKEN) { routeInfo.textContent = 'No MAPBOX_TOKEN set.'; return; }
+
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${s.lng},${s.lat};${e.lng},${e.lat}?geometries=geojson&overview=full&access_token=${MAPBOX_TOKEN}`;
+    routeInfo.textContent = 'Routing…';
+    try {
+      const r = await fetch(url);
+      const j = await r.json();
+      const route = j.routes && j.routes[0];
+      if (!route) { routeInfo.textContent = 'No route.'; return; }
+      const distKm = route.distance / 1000;
+      const durMin = route.duration / 60;
+      routeInfo.textContent = `Distance: ${distKm.toFixed(2)} km · ETA: ${durMin.toFixed(1)} min`;
+
+      clearRoute();
+      map.addSource(routeSourceId, { type: 'geojson', data: { type:'Feature', geometry: route.geometry } });
+      map.addLayer({ id: routeLayerId, type: 'line', source: routeSourceId, paint: { 'line-width': 5 } });
+      const coords = route.geometry.coordinates;
+      const bounds = coords.reduce((b, c) => b.extend(c), new mapboxgl.LngLatBounds(coords[0], coords[0]));
+      map.fitBounds(bounds, { padding: 40, duration: 600 });
+    } catch (e) {
+      console.error(e); routeInfo.textContent = 'Route failed.';
+    }
+  }
+
+  // Global click handler for popup Delete button
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.js-delete-stop');
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    if (!IS_ADMIN || Number.isNaN(id)) return;
+    if (!confirm(`Delete stop #${id}?`)) return;
+    const ok = await deleteStop(id);
+    if (ok) { if (typeof loadSavedStops === 'function') await loadSavedStops(); }
+  });
+
+  // Buttons
+  document.getElementById('locateBtn').addEventListener('click', startWatch);
+  document.getElementById('mbRightBtn').addEventListener('click', () => {
+    if (!lastFix) { statusEl.textContent = 'Start tracking first (Locate Me)'; return; }
+    const p = offsetByHeading(lastFix.lng, lastFix.lat, lastFix.headingRad, RIGHT_OFFSET_METERS, 0);
+    addMarker(p.lng, p.lat, 'Mailbox (Right of Travel)'); map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 17) });
+  });
+  document.getElementById('mbLeftBtn').addEventListener('click', () => {
+    if (!lastFix) { statusEl.textContent = 'Start tracking first (Locate Me)'; return; }
+    const p = offsetByHeading(lastFix.lng, lastFix.lat, lastFix.headingRad, -LEFT_OFFSET_METERS, 0);
+    addMarker(p.lng, p.lat, 'Mailbox (Left of Travel)'); map.easeTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 17) });
+  });
+  document.getElementById('mbClickBtn').addEventListener('click', () => {
+    if (!lastClickLngLat) { statusEl.textContent = 'Click on the map first to set a point'; return; }
+    addMarker(lastClickLngLat.lng, lastClickLngLat.lat, 'Mailbox (Clicked)'); map.easeTo({ center: [lastClickLngLat.lng, lastClickLngLat.lat], zoom: Math.max(map.getZoom(), 17) });
+  });
+  document.getElementById('saveLastBtn').addEventListener('click', saveLastPin);
+  document.getElementById('loadBtn').addEventListener('click', loadSavedStops);
+  document.getElementById('clearBtn').addEventListener('click', () => { clearMarkers(); statusEl.textContent = 'Cleared all pins.'; });
+
+  const selAllBtn = document.getElementById('selectAllBtn');
+  const clrSelBtn = document.getElementById('clearSelBtn');
+  const delSelBtn = document.getElementById('deleteSelBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  if (selAllBtn) selAllBtn.addEventListener('click', () => { const ids = Array.from(rowById.keys()); ids.forEach(id => toggleSelected(id, true)); });
+  if (clrSelBtn) clrSelBtn.addEventListener('click', () => { const ids = Array.from(rowById.keys()); ids.forEach(id => toggleSelected(id, false)); });
+  if (delSelBtn) delSelBtn.addEventListener('click', bulkDeleteSelected);
+  if (exportBtn) exportBtn.addEventListener('click', exportCSV);
+
+  // Route buttons
+  routeBtn.addEventListener('click', drawRoute);
+  clearRouteBtn.addEventListener('click', clearRoute);
+</script>
+
+<style>
+  #stopsList .selected { background: #fff5f5; border-color: #ffcaca; }
+</style>
+{% endblock %}

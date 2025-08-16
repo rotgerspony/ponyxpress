@@ -1,0 +1,15 @@
+﻿{% extends "base.html" %}{% block content %}
+<h2>Docs</h2>
+<h3>Endpoints</h3>
+<ul>
+  <li><code>GET /api/stops</code>, <code>POST /api/stops</code>, <code>DELETE /api/stops/&lt;id&gt;</code>, <code>POST /api/stops/bulk_delete</code></li>
+  <li><code>GET /api/scans</code>, <code>POST /api/scans</code>, <code>DELETE /api/scans/&lt;id&gt;</code></li>
+  <li><code>GET /admin/api/users</code>, <code>POST /admin/api/users</code>, role/password management</li>
+</ul>
+<h3>Roles</h3>
+<p><strong>carrier/admin</strong> can create; <strong>admin</strong> can delete and bulk manage; <strong>substitute</strong> is view-only.</p>
+<h3>Environment</h3>
+<pre><code>SECRET_KEY=...
+DATABASE_URL=sqlite:///ponyxpress.db
+MAPBOX_TOKEN=pk.YourToken</code></pre>
+{% endblock %}

@@ -1,0 +1,227 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<h2>Barcode Scanner</h2>
+
+<div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-start;">
+  <div style="flex:1; min-width:320px;">
+    <div id="viewport" style="position:relative; width:100%; max-width:640px; aspect-ratio:4/3; background:#000; border-radius:12px; overflow:hidden;"></div>
+    <div style="margin:.5rem 0; display:flex; gap:.5rem; flex-wrap:wrap;">
+      <button id="startBtn">🎥 Start Camera</button>
+      <button id="stopBtn">⏹️ Stop</button>
+      <button id="flipBtn">🔁 Flip</button>
+      <span id="status" style="opacity:.85;"></span>
+    </div>
+
+    <div style="display:grid; grid-template-columns: repeat(2, minmax(160px, 1fr)); gap:.5rem; align-items:end;">
+      <div>
+        <label>Last Code
+          <input id="code" placeholder="scan result" readonly />
+        </label>
+      </div>
+      <div>
+        <label>Size
+          <select id="size">
+            <option value="small" selected>small</option>
+            <option value="large">large</option>
+          </select>
+        </label>
+      </div>
+      <div>
+        <label>Destination
+          <select id="dest">
+            <option value="mailbox" selected>mailbox</option>
+            <option value="house">house</option>
+          </select>
+        </label>
+      </div>
+      <div>
+        <label>Location (lng,lat)
+          <input id="pos" placeholder="auto" readonly />
+        </label>
+      </div>
+    </div>
+
+    <div style="margin:.5rem 0; display:flex; gap:.5rem; flex-wrap:wrap;">
+      <button id="tooSmallBtn">📦 Too Small → mailbox</button>
+      <button id="tooBigBtn">📦 Too Big → house</button>
+      <label style="display:flex; align-items:center; gap:.4rem;">
+        <input type="checkbox" id="autoStopChk" />
+        Auto-create mailbox Stop on small
+      </label>
+      <button id="saveBtn">💾 Save Scan</button>
+    </div>
+  </div>
+
+  <aside style="width:360px; max-width:100%; border:1px solid #ddd; border-radius:12px; padding:.75rem;">
+    <h3 style="margin-top:0;">Recent Scans</h3>
+    <div id="scansList" style="display:flex; flex-direction:column; gap:.5rem;"></div>
+  </aside>
+</div>
+
+<script src="https://unpkg.com/@ericblade/quagga2/dist/quagga.min.js"></script>
+
+<script>
+  // role flags
+  const IS_AUTH  = {{ 'true' if current_user.is_authenticated else 'false' }};
+  const USER_ROLE = "{{ current_user.role if current_user.is_authenticated else '' }}";
+  const CAN_SAVE = {{ 'true' if current_user.is_authenticated and current_user.role in ['carrier','admin'] else 'false' }};
+  const IS_ADMIN = {{ 'true' if current_user.is_authenticated and current_user.role == 'admin' else 'false' }};
+
+  const viewport = document.getElementById('viewport');
+  const statusEl = document.getElementById('status');
+  const codeEl = document.getElementById('code');
+  const sizeEl = document.getElementById('size');
+  const destEl = document.getElementById('dest');
+  const posEl  = document.getElementById('pos');
+  const autoStopChk = document.getElementById('autoStopChk');
+  const scansList = document.getElementById('scansList');
+
+  let facing = 'environment';  // or 'user'
+  let lastDetection = 0;
+
+  function setStatus(msg) { statusEl.textContent = msg; }
+
+  function setSmallMailbox() { sizeEl.value = 'small'; destEl.value = 'mailbox'; }
+  function setLargeHouse()   { sizeEl.value = 'large'; destEl.value = 'house'; }
+
+  document.getElementById('tooSmallBtn').addEventListener('click', async () => {
+    setSmallMailbox();
+    await capturePosition(); // refresh GPS quickly
+  });
+  document.getElementById('tooBigBtn').addEventListener('click', () => setLargeHouse());
+
+  document.getElementById('flipBtn').addEventListener('click', async () => {
+    facing = (facing === 'environment') ? 'user' : 'environment';
+    await stopScanner(); await startScanner();
+  });
+
+  document.getElementById('startBtn').addEventListener('click', async () => { await startScanner(); });
+  document.getElementById('stopBtn').addEventListener('click', async () => { await stopScanner(); });
+
+  // Geolocation helpers
+  async function capturePosition() {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) return resolve(null);
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const { latitude, longitude } = pos.coords;
+        posEl.value = `${longitude.toFixed(5)}, ${latitude.toFixed(5)}`;
+        resolve({ lng: longitude, lat: latitude });
+      }, () => resolve(null), { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+    });
+  }
+  function parsePos() {
+    const v = posEl.value.trim();
+    if (!v || !v.includes(',')) return { lng: null, lat: null };
+    const [lng, lat] = v.split(',').map(s => Number(s.trim()));
+    if ([lng, lat].some(n => Number.isNaN(n))) return { lng: null, lat: null };
+    return { lng, lat };
+  }
+
+  // Quagga init/run
+  async function startScanner() {
+    try {
+      await stopScanner();
+      setStatus('Starting camera...');
+      await Quagga.init({
+        inputStream: {
+          type: 'LiveStream',
+          target: viewport,
+          constraints: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } }
+        },
+        decoder: {
+          readers: [
+            'code_128_reader', 'ean_reader', 'ean_8_reader',
+            'upc_reader', 'upc_e_reader', 'code_39_reader',
+            'interleaved_2_of_5_reader', 'codabar_reader'
+          ]
+        },
+        locate: true
+      }, (err) => {
+        if (err) { console.error(err); setStatus('Camera error: ' + err.message); return; }
+        Quagga.start(); setStatus('Scanning…');
+      });
+
+      Quagga.onDetected(onDetected);
+    } catch (e) {
+      console.error(e); setStatus('Init failed');
+    }
+  }
+  async function stopScanner() {
+    try { Quagga.stop(); } catch {}
+    try { Quagga.offDetected(onDetected); } catch {}
+    setStatus('Stopped');
+  }
+
+  function onDetected(result) {
+    const now = Date.now();
+    if (now - lastDetection < 800) return; // simple de-dupe
+    lastDetection = now;
+    const code = (result && result.codeResult && result.codeResult.code) || '';
+    if (!code) return;
+    codeEl.value = code;
+    setStatus('Detected: ' + code);
+    // Try to fill position quickly in background for convenience
+    if (!posEl.value) capturePosition();
+  }
+
+  // Save scan
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    if (!CAN_SAVE) { setStatus('Not allowed — login as carrier/admin'); return; }
+    const code = codeEl.value.trim();
+    const size = sizeEl.value;
+    const destination = destEl.value;
+    if (!code) { setStatus('No code scanned yet'); return; }
+    const { lng, lat } = parsePos();
+
+    try {
+      const r = await fetch('/api/scans', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ code, size, destination, lng, lat })
+      });
+      if (r.status === 403) { setStatus('403 — login as carrier/admin'); return; }
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || r.statusText);
+      setStatus(`Saved scan #${data.id}`);
+
+      // optional: auto-create a mailbox stop when small
+      if (autoStopChk.checked && size === 'small' && destination === 'mailbox' && lng != null && lat != null) {
+        const r2 = await fetch('/api/stops', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ lng, lat, label: 'Mailbox (from scan)' })
+        });
+        if (r2.ok) setStatus(`Saved scan #${data.id} + created stop`);
+      }
+
+      await loadRecentScans();
+      // clear only code (keep size/dest choice)
+      // codeEl.value = '';  // comment out if you prefer to clear automatically
+    } catch (e) {
+      console.error(e); setStatus('Save failed: ' + e.message);
+    }
+  });
+
+  // Recent scans
+  async function loadRecentScans() {
+    try {
+      const r = await fetch('/api/scans?page=1&page_size=10');
+      if (!r.ok) { scansList.innerHTML = '<div>Failed to load.</div>'; return; }
+      const data = await r.json();
+      const items = data.items || [];
+      scansList.innerHTML = '';
+      if (!items.length) { scansList.innerHTML = '<div style="opacity:.7;">No scans yet.</div>'; return; }
+      for (const s of items) {
+        const row = document.createElement('div');
+        row.style.border = '1px solid #eee'; row.style.borderRadius = '8px'; row.style.padding = '.5rem .6rem';
+        row.innerHTML = `<strong>${s.code}</strong> <small>(${s.size}/${s.destination})</small><br><small>${new Date(s.created_at).toLocaleString()}${s.created_by ? ' · by '+s.created_by : ''}</small>`;
+        scansList.appendChild(row);
+      }
+    } catch (e) {
+      console.error(e); scansList.innerHTML = '<div>Load failed.</div>';
+    }
+  }
+
+  // init
+  setSmallMailbox(); // default
+  loadRecentScans();
+</script>
+{% endblock %}
