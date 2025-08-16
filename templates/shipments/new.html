@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>New Shipment</h1>
+<form method="post">
+  <label>Customer Name <input name="customer_name" required></label><br>
+  <label>Pickup Address <input name="pickup_address" required></label><br>
+  <label>Dropoff Address <input name="dropoff_address" required></label><br>
+  <button type="submit">Create</button>
+</form>
+{% endblock %}

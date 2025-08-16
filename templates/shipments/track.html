@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Track {{ s.tracking_code }}</h1>
+<p>Status: <strong>{{ s.status }}</strong></p>
+<p>Destination: {{ s.dropoff_address }}</p>
+{% endblock %}

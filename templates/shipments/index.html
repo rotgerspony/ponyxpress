@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Shipments</h1>
+<p><a href="{{ url_for('shipments.new') }}">+ New shipment</a></p>
+<table>
+  <tr><th>Created</th><th>Tracking</th><th>Customer</th><th>Status</th></tr>
+  {% for s in shipments %}
+    <tr>
+      <td>{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td><a href="{{ url_for('shipments.show', tracking=s.tracking_code) }}">{{ s.tracking_code }}</a></td>
+      <td>{{ s.customer_name }}</td>
+      <td>{{ s.status }}</td>
+    </tr>
+  {% endfor %}
+</table>
+{% endblock %}

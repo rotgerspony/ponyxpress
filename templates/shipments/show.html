@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Shipment {{ s.tracking_code }}</h1>
+<p><strong>Status:</strong> {{ s.status }}</p>
+<p><strong>Customer:</strong> {{ s.customer_name }}</p>
+<p><strong>Pickup:</strong> {{ s.pickup_address }}</p>
+<p><strong>Dropoff:</strong> {{ s.dropoff_address }}</p>
+<p>Public tracker:
+  <a href="{{ url_for('shipments.public', tracking=s.tracking_code, _external=True) }}">
+    {{ url_for('shipments.public', tracking=s.tracking_code, _external=True) }}
+  </a>
+</p>
+{% endblock %}
