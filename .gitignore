@@ -39,3 +39,5 @@ test-results/
 # App artifacts
 .screenshots_all/
 static/uploads/
+
+.screenshots/
